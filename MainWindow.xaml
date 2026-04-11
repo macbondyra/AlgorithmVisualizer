@@ -2,16 +2,16 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Sorting Visualizer" Height="1280" Width="720">
-    <ItemsControl ItemsSource="{Binding Items}">
+    <ItemsControl ItemsSource="{Binding Items}" VerticalAlignment="Bottom">
         <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
-                <UniformGrid Rows="1" VerticalAlignment="Center"/>
-            </ItemsPanelTemplate>
+                <UniformGrid Rows="1"  VerticalAlignment="Bottom"/>
+                </ItemsPanelTemplate>
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
             <DataTemplate>
                 <Rectangle
-                       Margin="1" 
+             
                        Height="{Binding Value}" 
                        Fill="{Binding Color}"/>
             </DataTemplate>
