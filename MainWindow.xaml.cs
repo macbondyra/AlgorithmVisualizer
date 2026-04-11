@@ -26,9 +26,9 @@ namespace AlgorithmVisualizer
             this.DataContext = ViewModel;
             Random rng = new Random();
 
-            for (int i = 1; i < 50; i++) ViewModel.Items.Add(new VisualElement { Value = rng.Next(10,200) });
+            for (int i = 1; i < 150; i++) ViewModel.Items.Add(new VisualElement { Value = rng.Next(10,200) });
 
-            Task.Run(() => ViewModel.BubbleSort());
+            Task.Run(() => ViewModel.SortParallel());
         }
     }
 }
