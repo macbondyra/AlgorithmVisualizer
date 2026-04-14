@@ -1,20 +1,92 @@
 ﻿<Window x:Class="AlgorithmVisualizer.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Sorting Visualizer" Height="1280" Width="720">
-    <ItemsControl ItemsSource="{Binding Items}" VerticalAlignment="Bottom">
-        <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-                <UniformGrid Rows="1"  VerticalAlignment="Bottom"/>
+        xmlns:local="clr-namespace:AlgorithmVisualizer"
+        Title="Sorting Visualizer Symphonic" Height="750" Width="1200" Background="#121212">
+
+    <Window.Resources>
+        <local:InverseBooleanConverter x:Key="InverseBool"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Border Background="#1E1E1E" Padding="15" BorderBrush="#333" BorderThickness="0,0,0,1">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+
+                <StackPanel Margin="10,0">
+                    <TextBlock Text="ALGORYTM" Foreground="Gray" FontSize="10" FontWeight="Bold" Margin="0,0,0,5"/>
+                    <ComboBox ItemsSource="{Binding Algorithms}" SelectedItem="{Binding SelectedAlgorithm}" Width="160" 
+                              IsEnabled="{Binding IsSorting, Converter={StaticResource InverseBool}}"/>
+                </StackPanel>
+
+                <StackPanel Margin="15,0">
+                    <TextBlock Text="{Binding DataCount, StringFormat='ELEMENTY: {0}'}" Foreground="Gray" FontSize="10" FontWeight="Bold" Margin="0,0,0,5"/>
+                    <Slider Minimum="10" Maximum="1000" Value="{Binding DataCount}" Width="110" IsSnapToTickEnabled="True" TickFrequency="10"
+                            IsEnabled="{Binding IsSorting, Converter={StaticResource InverseBool}}"/>
+                </StackPanel>
+
+                <StackPanel Margin="15,0">
+                    <TextBlock Text="{Binding Delay, StringFormat='OPÓŹNIENIE: {0}ms'}" Foreground="Gray" FontSize="10" FontWeight="Bold" Margin="0,0,0,5"/>
+                    <Slider Minimum="1" Maximum="200" Value="{Binding Delay}" Width="110" IsSnapToTickEnabled="True" TickFrequency="1"/>
+                </StackPanel>
+
+                <StackPanel Margin="15,0" VerticalAlignment="Center">
+                    <TextBlock Text="DŹWIĘK" Foreground="Gray" FontSize="10" FontWeight="Bold" Margin="0,0,0,5" HorizontalAlignment="Center"/>
+                    <CheckBox IsChecked="{Binding IsSoundEnabled}" HorizontalAlignment="Center">
+                        <CheckBox.LayoutTransform>
+                            <ScaleTransform ScaleX="1.5" ScaleY="1.5"/>
+                        </CheckBox.LayoutTransform>
+                    </CheckBox>
+                </StackPanel>
+
+                <StackPanel Margin="10,0">
+                    <TextBlock Text="KOLOR" Foreground="Gray" FontSize="10" FontWeight="Bold" Margin="0,0,0,5"/>
+                    <ComboBox ItemsSource="{Binding AvailableColors}" SelectedItem="{Binding SelectedColor}" Width="70">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <Rectangle Fill="{Binding}" Width="30" Height="12" RadiusX="2" RadiusY="2"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="20,0">
+                    <Button Content="GENERUJ" Click="Generate_Click" Width="80" Height="35" Margin="5,0" Background="#333" Foreground="White" BorderThickness="0"/>
+
+                    <Button Content="START" Click="Start_Click" Width="80" Height="35" Margin="5,0" Background="#007ACC" Foreground="White" FontWeight="Bold" BorderThickness="0"
+                            Visibility="{Binding IsSorting, Converter={StaticResource InverseBool}, ConverterParameter=CollapseToHidden}"/>
+
+                    <Button Content="STOP" Click="Stop_Click" Width="80" Height="35" Margin="5,0" Background="#CC0000" Foreground="White" FontWeight="Bold" BorderThickness="0"
+                            Visibility="{Binding IsSorting, Converter={StaticResource BoolToVis}}"/>
+                </StackPanel>
+
+                <StackPanel Margin="15,0" VerticalAlignment="Center">
+                    <TextBlock Text="CZAS" Foreground="Gray" FontSize="10" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding SortTime}" Foreground="#4EC9B0" FontSize="18" FontWeight="Bold" FontFamily="Consolas"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding Items}" VerticalAlignment="Bottom" Margin="10,30">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <UniformGrid Rows="1" VerticalAlignment="Bottom"/>
                 </ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-            <DataTemplate>
-                <Rectangle
-             
-                       Height="{Binding Value}" 
-                       Fill="{Binding Color}"/>
-            </DataTemplate>
-        </ItemsControl.ItemTemplate>
-    </ItemsControl>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Rectangle Height="{Binding Value}" Fill="{Binding Color}" Margin="0,0,1,0">
+                        <Rectangle.ToolTip>
+                            <ToolTip Content="{Binding Value}"/>
+                        </Rectangle.ToolTip>
+                    </Rectangle>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </Grid>
 </Window>
