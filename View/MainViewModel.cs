@@ -16,7 +16,7 @@ namespace AlgorithmVisualizer.View
         public ObservableCollection<VisualElement> Items { get; set; } = new();
         private CancellationTokenSource _cts;
 
-        // --- Właściwości Sterujące ---
+        // --- Właściwości ---
         private int _delay = 20;
         public int Delay { get => _delay; set { _delay = value; OnPropChanged(); } }
 
@@ -32,7 +32,6 @@ namespace AlgorithmVisualizer.View
         private bool _isSoundEnabled = true;
         public bool IsSoundEnabled { get => _isSoundEnabled; set { _isSoundEnabled = value; OnPropChanged(); } }
 
-        // --- Wybór Koloru i Algorytmu ---
         public List<Brush> AvailableColors { get; } = new() { Brushes.SkyBlue, Brushes.Orange, Brushes.MediumPurple, Brushes.Coral, Brushes.LightGreen };
         private Brush _selectedColor = Brushes.SkyBlue;
         public Brush SelectedColor { get => _selectedColor; set { _selectedColor = value; ResetItemsColor(); OnPropChanged(); } }
@@ -43,19 +42,16 @@ namespace AlgorithmVisualizer.View
         public event PropertyChangedEventHandler PropertyChanged;
         void OnPropChanged([CallerMemberName] string p = "") => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));
 
-        // --- Synchronizowany Dźwięk ---
+        // --- Dźwięk ---
         private void PlayTone(double value)
         {
             if (!IsSoundEnabled || !IsSorting) return;
-
             double frequency = 300 + (value * 2);
-            // Dźwięk trwa tyle, co opóźnienie (ale nie za długo, by nie trzeszczało)
             int toneDuration = Math.Clamp(Delay, 5, 50);
-
             Task.Run(() => Helpers.SoundHelper.PlaySineTone(frequency, toneDuration, 0.1));
         }
 
-        // --- Logika Aplikacji ---
+        // --- Sterowanie ---
         public void GenerateItems()
         {
             StopSort();
@@ -67,7 +63,6 @@ namespace AlgorithmVisualizer.View
         }
 
         public void StopSort() { _cts?.Cancel(); IsSorting = false; }
-
         private void ResetItemsColor() { foreach (var item in Items) item.Color = SelectedColor; }
 
         public async Task StartSort()
@@ -88,11 +83,34 @@ namespace AlgorithmVisualizer.View
                     }
                 }, token);
 
+                // 1. Wykonaj algorytm
                 if (SelectedAlgorithm == "Bubble Sort") await BubbleSort(token);
                 else await Task.Run(async () => await ParallelMergeSort(0, Items.Count - 1, token), token);
+
+                // 2. Wykonaj checksumę (zielone podświetlenie), jeśli nie przerwano
+                if (!token.IsCancellationRequested)
+                {
+                    sw.Stop();
+                    await ValidateSort(token);
+                }
             }
             catch (OperationCanceledException) { }
-            finally { sw.Stop(); IsSorting = false; ResetItemsColor(); SortTime = sw.Elapsed.ToString(@"ss\:fff") + " ms"; }
+            finally { IsSorting = false; }
+        }
+
+        // --- Checksum (Podsumowanie) ---
+        private async Task ValidateSort(CancellationToken token)
+        {
+            // Przejdź po wszystkich elementach i zaznacz na zielono z dźwiękiem
+            for (int i = 0; i < Items.Count; i++)
+            {
+                if (token.IsCancellationRequested) return;
+                int idx = i;
+                App.Current.Dispatcher.Invoke(() => Items[idx].Color = Brushes.LimeGreen);
+                PlayTone(Items[i].Value);
+                // Przyspieszamy checksumę względem sortowania, żeby nie trwała wiecznie
+                await Task.Delay(Math.Max(1, Delay / 2), token);
+            }
         }
 
         // --- Algorytmy ---
@@ -103,12 +121,14 @@ namespace AlgorithmVisualizer.View
                 for (int j = 0; j < Items.Count - 1 - i; j++)
                 {
                     if (token.IsCancellationRequested) return;
-                    UpdateColor(j, j + 1, Brushes.Red);
+
+                    UpdateColor(j, j + 1, Brushes.Red); // Podświetlenie sprawdzanych
+
                     if (Items[j].Value > Items[j + 1].Value)
                     {
                         (Items[j].Value, Items[j + 1].Value) = (Items[j + 1].Value, Items[j].Value);
                         PlayTone(Items[j].Value);
-                        await Task.Delay(Delay, token); // Synchronizacja suwakiem
+                        await Task.Delay(Delay, token);
                     }
                     UpdateColor(j, j + 1, SelectedColor);
                 }
@@ -128,12 +148,24 @@ namespace AlgorithmVisualizer.View
         {
             List<double> temp = new();
             int i = l, j = m + 1;
+
             while (i <= m && j <= r)
             {
                 if (t.IsCancellationRequested) return;
-                if (Items[i].Value <= Items[j].Value) temp.Add(Items[i++].Value);
-                else temp.Add(Items[j++].Value);
+
+                // PODŚWIETLENIE NA CZERWONO (Aktualnie porównywane pary)
+                UpdateColor(i, j, Brushes.Red);
+                await Task.Delay(Delay, t);
+
+                if (Items[i].Value <= Items[j].Value)
+                    temp.Add(Items[i++].Value);
+                else
+                    temp.Add(Items[j++].Value);
+
+                // Reset do koloru bazowego po porównaniu
+                UpdateColor(i - 1, j - 1, SelectedColor);
             }
+
             while (i <= m) temp.Add(Items[i++].Value);
             while (j <= r) temp.Add(Items[j++].Value);
 
@@ -143,10 +175,10 @@ namespace AlgorithmVisualizer.View
                 int idx = l + k;
                 App.Current.Dispatcher.Invoke(() => {
                     Items[idx].Value = temp[k];
-                    Items[idx].Color = Brushes.LightGreen;
+                    Items[idx].Color = Brushes.Orange; // Kolor pomocniczy przy wstawianiu z temp
                 });
                 PlayTone(temp[k]);
-                await Task.Delay(Delay, t); // Synchronizacja suwakiem
+                await Task.Delay(Delay, t);
                 App.Current.Dispatcher.Invoke(() => Items[idx].Color = SelectedColor);
             }
         }

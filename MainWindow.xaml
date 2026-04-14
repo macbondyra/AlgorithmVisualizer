@@ -57,10 +57,8 @@
 
                 <StackPanel Orientation="Horizontal" Margin="20,0">
                     <Button Content="GENERUJ" Click="Generate_Click" Width="80" Height="35" Margin="5,0" Background="#333" Foreground="White" BorderThickness="0"/>
-
                     <Button Content="START" Click="Start_Click" Width="80" Height="35" Margin="5,0" Background="#007ACC" Foreground="White" FontWeight="Bold" BorderThickness="0"
                             Visibility="{Binding IsSorting, Converter={StaticResource InverseBool}, ConverterParameter=CollapseToHidden}"/>
-
                     <Button Content="STOP" Click="Stop_Click" Width="80" Height="35" Margin="5,0" Background="#CC0000" Foreground="White" FontWeight="Bold" BorderThickness="0"
                             Visibility="{Binding IsSorting, Converter={StaticResource BoolToVis}}"/>
                 </StackPanel>
@@ -80,11 +78,7 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                    <Rectangle Height="{Binding Value}" Fill="{Binding Color}" Margin="0,0,1,0">
-                        <Rectangle.ToolTip>
-                            <ToolTip Content="{Binding Value}"/>
-                        </Rectangle.ToolTip>
-                    </Rectangle>
+                    <Rectangle Height="{Binding Value}" Fill="{Binding Color}" Margin="0,0,1,0"/>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
