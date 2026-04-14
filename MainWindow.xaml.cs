@@ -19,18 +19,24 @@ namespace AlgorithmVisualizer
 
         private void Generate_Click(object sender, RoutedEventArgs e) => ViewModel.GenerateItems();
         private async void Start_Click(object sender, RoutedEventArgs e) => await ViewModel.StartSort();
-        private void Stop_Click(object sender, RoutedEventArgs e) => ViewModel.StopSort();
+        private void Pause_Click(object sender, RoutedEventArgs e) => ViewModel.TogglePause();
     }
 
+    // Ten konwerter musi być w namespace AlgorithmVisualizer, aby local: go widział
     public class InverseBooleanConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             bool b = (bool)value;
             if (targetType == typeof(Visibility))
-                return (parameter?.ToString() == "CollapseToHidden" && b) ? Visibility.Collapsed : (b ? Visibility.Collapsed : Visibility.Visible);
+            {
+                if (parameter?.ToString() == "CollapseToHidden")
+                    return b ? Visibility.Collapsed : Visibility.Visible;
+                return b ? Visibility.Visible : Visibility.Collapsed;
+            }
             return !b;
         }
+
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
     }
 }
