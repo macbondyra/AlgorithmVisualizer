@@ -1,8 +1,6 @@
 ﻿using System;
-using System.Globalization;
 using System.Windows;
-using System.Windows.Data;
-using AlgorithmVisualizer.View;
+using AlgorithmVisualizer.View; // Tu masz MainViewModel.cs
 
 namespace AlgorithmVisualizer
 {
@@ -14,29 +12,30 @@ namespace AlgorithmVisualizer
         {
             InitializeComponent();
             this.DataContext = ViewModel;
-            ViewModel.GenerateItems();
+
+            this.Closing += (s, e) => ViewModel.Dispose();
         }
 
         private void Generate_Click(object sender, RoutedEventArgs e) => ViewModel.GenerateItems();
         private async void Start_Click(object sender, RoutedEventArgs e) => await ViewModel.StartSort();
         private void Pause_Click(object sender, RoutedEventArgs e) => ViewModel.TogglePause();
-    }
 
-    // Ten konwerter musi być w namespace AlgorithmVisualizer, aby local: go widział
-    public class InverseBooleanConverter : IValueConverter
-    {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        private void Master_Click(object sender, RoutedEventArgs e)
         {
-            bool b = (bool)value;
-            if (targetType == typeof(Visibility))
-            {
-                if (parameter?.ToString() == "CollapseToHidden")
-                    return b ? Visibility.Collapsed : Visibility.Visible;
-                return b ? Visibility.Visible : Visibility.Collapsed;
-            }
-            return !b;
+            ViewModel.SetMasterRole();
+            RoleOverlay.Visibility = Visibility.Collapsed;
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
+        private void Worker_Click(object sender, RoutedEventArgs e)
+        {
+            WorkerPanel.Visibility = Visibility.Visible;
+        }
+
+        private void Connect_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(IpTextBox.Text)) return;
+            ViewModel.SetWorkerRole(IpTextBox.Text.Trim());
+            RoleOverlay.Visibility = Visibility.Collapsed;
+        }
     }
 }
