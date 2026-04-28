@@ -149,11 +149,17 @@ namespace AlgorithmVisualizer.Services
 
         private static List<List<double>> Split(List<double> source, int parts)
         {
-            return source
-                .Select((x, i) => new { Index = i, Value = x })
-                .GroupBy(x => x.Index % parts)
-                .Select(g => g.Select(x => x.Value).ToList())
-                .ToList();
+            var chunks = new List<List<double>>();
+            if (parts <= 0 || source.Count == 0) return chunks;
+
+            int totalSize = source.Count;
+            int chunkSize = (int)Math.Ceiling(totalSize / (double)parts);
+
+            for (int i = 0; i < totalSize; i += chunkSize)
+            {
+                chunks.Add(source.GetRange(i, Math.Min(chunkSize, totalSize - i)));
+            }
+            return chunks;
         }
 
         public void Dispose()

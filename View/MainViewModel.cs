@@ -404,17 +404,22 @@ namespace AlgorithmVisualizer.View
                 currentPos += chunk.Count;
             }
 
-            // Wizualizuj scalanie k-kierunkowe (uproszczone do serii scaleń 2-kierunkowych)
-            int totalSize = 0;
-            for (int i = 0; i < sortedChunks.Count - 1; i++)
+            // Wizualizuj scalanie k-kierunkowe (jako serię scaleń 2-kierunkowych)
+            if (sortedChunks.Count > 1)
             {
-                int leftStart = 0;
-                int rightStart = totalSize + sortedChunks[i].Count;
-                int mid = rightStart - 1;
-                int rightEnd = rightStart + sortedChunks[i+1].Count - 1;
+                int totalMergedSize = sortedChunks[0].Count;
+                for (int i = 1; i < sortedChunks.Count; i++)
+                {
+                    if (token.IsCancellationRequested) break;
 
-                await Merge(leftStart, mid, rightEnd, token);
-                totalSize += sortedChunks[i].Count;
+                    int leftStart = 0;
+                    int mid = totalMergedSize - 1;
+                    int rightEnd = mid + sortedChunks[i].Count;
+
+                    await Merge(leftStart, mid, rightEnd, token);
+
+                    totalMergedSize += sortedChunks[i].Count;
+                }
             }
         }
 
