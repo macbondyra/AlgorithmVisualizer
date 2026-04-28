@@ -143,12 +143,20 @@ namespace AlgorithmVisualizer.Services
                 }
                 
                 string responseJson = Encoding.UTF8.GetString(messageBuffer);
+                try
+                {
                 var message = JsonSerializer.Deserialize<SortMessage>(responseJson, options);
                 
-                if (message.IsFinal)
-                    return message.Data;
-                else
+                    if (message.IsFinal)
+                        return message.Data;
+                    else
                     onProgress?.Invoke(message.Data);
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    Console.WriteLine($"PAYLOAD_DUMP: {responseJson}");
+                    throw;
+                }
             }
         }
 
