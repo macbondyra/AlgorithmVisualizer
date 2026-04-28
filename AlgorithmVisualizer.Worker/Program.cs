@@ -1,4 +1,4 @@
-﻿// Plik: AlgorithmVisualizer.Worker/Program.cs
+﻿﻿// Plik: AlgorithmVisualizer.Worker/Program.cs
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -70,7 +70,8 @@ public class Worker
                     Console.WriteLine("Sortowanie ukończone. Odsyłanie wyniku...");
 
                     // Serializuj i odeślij posortowane dane
-                    string responseJson = JsonSerializer.Serialize(data);
+                    var responseObj = new { IsFinal = true, Data = data };
+                    string responseJson = JsonSerializer.Serialize(responseObj);
                     byte[] responseBytes = Encoding.UTF8.GetBytes(responseJson);
                     byte[] responseLength = BitConverter.GetBytes(responseBytes.Length);
 

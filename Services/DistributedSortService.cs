@@ -13,6 +13,12 @@ namespace AlgorithmVisualizer.Services
 {
     public class DistributedSortService : IDisposable
     {
+        public class SortMessage
+        {
+            public bool IsFinal { get; set; }
+            public List<double> Data { get; set; }
+        }
+
         private TcpListener _listener;
         private readonly List<TcpClient> _workers = new();
         private readonly CancellationTokenSource _cts = new();
@@ -64,7 +70,7 @@ namespace AlgorithmVisualizer.Services
             }
         }
 
-        public async Task<List<List<double>>> DistributeAndSortAsync(List<double> data, CancellationToken token)
+        public async Task<List<List<double>>> DistributeAndSortAsync(List<double> data, Action<int, List<double>> onProgress, CancellationToken token)
         {
             List<TcpClient> currentWorkers;
             lock (_workers)
@@ -83,16 +89,19 @@ namespace AlgorithmVisualizer.Services
             var chunks = Split(data, currentWorkers.Count);
             var tasks = new List<Task<List<double>>>();
 
+            int currentOffset = 0;
             for (int i = 0; i < currentWorkers.Count; i++)
             {
-                tasks.Add(ProcessChunk(currentWorkers[i], chunks[i], token));
+                int offset = currentOffset;
+                tasks.Add(ProcessChunk(currentWorkers[i], chunks[i], progressData => onProgress?.Invoke(offset, progressData), token));
+                currentOffset += chunks[i].Count;
             }
 
             var sortedChunks = await Task.WhenAll(tasks);
             return sortedChunks.ToList();
         }
 
-        private async Task<List<double>> ProcessChunk(TcpClient worker, List<double> chunk, CancellationToken token)
+        private async Task<List<double>> ProcessChunk(TcpClient worker, List<double> chunk, Action<List<double>> onProgress, CancellationToken token)
         {
             using var registration = token.Register(() => worker.Close());
 
@@ -105,29 +114,37 @@ namespace AlgorithmVisualizer.Services
             await stream.WriteAsync(lengthPrefix, 0, 4, token);
             await stream.WriteAsync(jsonBytes, 0, jsonBytes.Length, token);
 
-            // Odbierz wynik - wersja kompatybilna z .NET < 6 (zamiast ReadExactlyAsync)
-            byte[] lengthBuffer = new byte[4];
-            int totalRead = 0;
-            while (totalRead < lengthBuffer.Length)
+            // Pętla nasłuchująca odpowiedzi (postępy + wynik końcowy)
+            while (true)
             {
-                int bytesRead = await stream.ReadAsync(lengthBuffer, totalRead, lengthBuffer.Length - totalRead, token);
-                if (bytesRead == 0) throw new EndOfStreamException("Utracono połączenie z workerem podczas odczytu długości wiadomości.");
-                totalRead += bytesRead;
-            }
+                byte[] lengthBuffer = new byte[4];
+                int totalRead = 0;
+                while (totalRead < lengthBuffer.Length)
+                {
+                    int bytesRead = await stream.ReadAsync(lengthBuffer, totalRead, lengthBuffer.Length - totalRead, token);
+                    if (bytesRead == 0) throw new EndOfStreamException("Utracono połączenie z workerem podczas odczytu długości wiadomości.");
+                    totalRead += bytesRead;
+                }
 
-            int messageLength = BitConverter.ToInt32(lengthBuffer, 0);
+                int messageLength = BitConverter.ToInt32(lengthBuffer, 0);
 
-            byte[] messageBuffer = new byte[messageLength];
-            totalRead = 0;
-            while (totalRead < messageBuffer.Length)
-            {
-                int bytesRead = await stream.ReadAsync(messageBuffer, totalRead, messageBuffer.Length - totalRead, token);
-                if (bytesRead == 0) throw new EndOfStreamException("Utracono połączenie z workerem podczas odczytu danych.");
-                totalRead += bytesRead;
+                byte[] messageBuffer = new byte[messageLength];
+                totalRead = 0;
+                while (totalRead < messageBuffer.Length)
+                {
+                    int bytesRead = await stream.ReadAsync(messageBuffer, totalRead, messageBuffer.Length - totalRead, token);
+                    if (bytesRead == 0) throw new EndOfStreamException("Utracono połączenie z workerem podczas odczytu danych.");
+                    totalRead += bytesRead;
+                }
+                
+                string responseJson = Encoding.UTF8.GetString(messageBuffer);
+                var message = JsonSerializer.Deserialize<SortMessage>(responseJson);
+                
+                if (message.IsFinal)
+                    return message.Data;
+                else
+                    onProgress?.Invoke(message.Data);
             }
-            
-            string responseJson = Encoding.UTF8.GetString(messageBuffer);
-            return JsonSerializer.Deserialize<List<double>>(responseJson);
         }
 
         private static List<List<double>> Split(List<double> source, int parts)

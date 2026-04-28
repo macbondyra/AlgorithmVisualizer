@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -144,21 +144,56 @@ namespace AlgorithmVisualizer.View
                             }
                         }, token);
 
+                        // Równoległe wysyłanie postępów do Mistrza
+                        SemaphoreSlim writeLock = new SemaphoreSlim(1, 1);
+                        var progressTask = Task.Run(async () => {
+                            while (!token.IsCancellationRequested && IsSorting)
+                            {
+                                await Task.Delay(50);
+                                if (!IsSorting) break;
+
+                                List<double> currentData = null;
+                                Application.Current.Dispatcher.Invoke(() => {
+                                    currentData = Items.Select(i => i.Value).ToList();
+                                });
+
+                                var msg = new { IsFinal = false, Data = currentData };
+                                string progJson = JsonSerializer.Serialize(msg);
+                                byte[] progBytes = Encoding.UTF8.GetBytes(progJson);
+                                byte[] progLen = BitConverter.GetBytes(progBytes.Length);
+
+                                await writeLock.WaitAsync();
+                                try {
+                                    await stream.WriteAsync(progLen, 0, 4);
+                                    await stream.WriteAsync(progBytes, 0, progBytes.Length);
+                                } catch {
+                                    // Błędy rozłączenia obsłuży główna pętla
+                                } finally {
+                                    writeLock.Release();
+                                }
+                            }
+                        });
+
                         // Wizualne sortowanie po stronie pracownika!
                         if (SelectedAlgorithm == "Bubble Sort") await BubbleSort(token);
                         else await Task.Run(async () => await ParallelMergeSort(0, Items.Count - 1, token), token);
 
                         IsSorting = false;
+                        await progressTask; // Czekamy aż reporter skończy wysyłanie postępów
                         ResetItemsColor();
                         WorkerStatus = "Wysyłanie wyników...";
 
                         var sortedData = Items.Select(i => i.Value).ToList();
-                        string respJson = JsonSerializer.Serialize(sortedData);
+                        var finalMsg = new { IsFinal = true, Data = sortedData };
+                        string respJson = JsonSerializer.Serialize(finalMsg);
                         byte[] respBytes = Encoding.UTF8.GetBytes(respJson);
                         byte[] respLen = BitConverter.GetBytes(respBytes.Length);
 
-                        await stream.WriteAsync(respLen, 0, 4);
-                        await stream.WriteAsync(respBytes, 0, respBytes.Length);
+                        await writeLock.WaitAsync();
+                        try {
+                            await stream.WriteAsync(respLen, 0, 4);
+                            await stream.WriteAsync(respBytes, 0, respBytes.Length);
+                        } finally { writeLock.Release(); }
                         WorkerStatus = "Oczekuję na kolejne dane...";
                     }
                 }
@@ -338,7 +373,20 @@ namespace AlgorithmVisualizer.View
 
         private async Task DistributedSort(List<double> data, CancellationToken token)
         {
-            var sortedChunks = await _distributedSortService.DistributeAndSortAsync(data, token);
+            var sortedChunks = await _distributedSortService.DistributeAndSortAsync(data, (offset, currentData) => 
+            {
+                Application.Current.Dispatcher.InvokeAsync(() => 
+                {
+                    for (int i = 0; i < currentData.Count; i++)
+                    {
+                        int targetIndex = offset + i;
+                        if (targetIndex < Items.Count)
+                        {
+                            Items[targetIndex].Value = currentData[i];
+                        }
+                    }
+                });
+            }, token);
 
             // Przygotuj dane do scalenia wizualnego
             var finalMergedList = new List<double>();
