@@ -71,7 +71,7 @@ public class Worker
 
                     // Serializuj i odeślij posortowane dane
                     var responseObj = new { IsFinal = true, Data = data };
-                    string responseJson = JsonSerializer.Serialize(responseObj);
+                    string responseJson = JsonSerializer.Serialize(responseObj);        
                     byte[] responseBytes = Encoding.UTF8.GetBytes(responseJson);
                     byte[] responseLength = BitConverter.GetBytes(responseBytes.Length);
 

@@ -27,7 +27,8 @@ namespace AlgorithmVisualizer.Services
 
         public DistributedSortService()
         {
-            _listener = new TcpListener(IPAddress.Any, 8888);
+           Thread.CurrentThread.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+           _listener = new TcpListener(IPAddress.Any, 8888);
         }
 
         public void StartListening()
@@ -103,6 +104,10 @@ namespace AlgorithmVisualizer.Services
 
         private async Task<List<double>> ProcessChunk(TcpClient worker, List<double> chunk, Action<List<double>> onProgress, CancellationToken token)
         {
+            var options = new JsonSerializerOptions 
+                { 
+                    PropertyNameCaseInsensitive = true 
+                };
             using var registration = token.Register(() => worker.Close());
 
             var stream = worker.GetStream();
@@ -138,7 +143,7 @@ namespace AlgorithmVisualizer.Services
                 }
                 
                 string responseJson = Encoding.UTF8.GetString(messageBuffer);
-                var message = JsonSerializer.Deserialize<SortMessage>(responseJson);
+                var message = JsonSerializer.Deserialize<SortMessage>(responseJson, options);
                 
                 if (message.IsFinal)
                     return message.Data;
