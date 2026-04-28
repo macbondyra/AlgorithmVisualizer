@@ -70,7 +70,7 @@ public class Worker
                     Console.WriteLine("Sortowanie ukończone. Odsyłanie wyniku...");
 
                     // Serializuj i odeślij posortowane dane
-                    var responseObj = new { IsFinal = true, Data = data };
+                    var responseObj = new SortMessage { IsFinal = true, Data = data };
                     string responseJson = JsonSerializer.Serialize(responseObj);        
                     byte[] responseBytes = Encoding.UTF8.GetBytes(responseJson);
                     byte[] responseLength = BitConverter.GetBytes(responseBytes.Length);
@@ -87,4 +87,9 @@ public class Worker
             }
         }
     }
+}
+public class SortMessage 
+{
+    public bool IsFinal { get; set; }
+    public List<double> Data { get; set; }
 }
