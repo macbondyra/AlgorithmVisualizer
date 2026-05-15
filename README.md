@@ -79,7 +79,7 @@ cd AlgorithmVisualizer
 dotnet build AlgorithmVisualizer.sln
 ```
 #### 2. Uruchomienie jednostki centralnej (Mistrz)
-Aplikacja Mistrza musi zostać uruchomiona jako pierwsza, aby otworzyć serwer nasłuchujący na połączenia przychodzące[cite: 8, 17]. Możesz to zrobić z poziomu Visual Studio lub terminala:
+Aplikacja Mistrza musi zostać uruchomiona jako pierwsza, aby otworzyć serwer nasłuchujący na połączenia przychodzące. Możesz to zrobić z poziomu Visual Studio lub terminala:
 ```bash
 # Wejdź do folderu projektu Mistrza
 cd AlgorithmVisualizer
