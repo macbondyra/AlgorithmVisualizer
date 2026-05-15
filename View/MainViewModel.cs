@@ -1,22 +1,30 @@
-﻿using System;
+﻿﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Linq;
+using System.Net.Sockets;
+using System.Text;
+using System.Text.Json;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Media;
 using AlgorithmVisualizer.Model;
+using AlgorithmVisualizer.Helpers;
+using AlgorithmVisualizer.Services;
 
 namespace AlgorithmVisualizer.View
 {
-    public class MainViewModel : INotifyPropertyChanged
+    public class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         public ObservableCollection<VisualElement> Items { get; set; } = new();
         private CancellationTokenSource _cts;
         private ManualResetEventSlim _pauseEvent = new ManualResetEventSlim(true);
         private Stopwatch _sw = new Stopwatch();
+        private readonly DistributedSortService _distributedSortService;
 
         private int _delay = 100;
         public int Delay { get => _delay; set { _delay = value; OnPropChanged(); } }
@@ -39,12 +47,163 @@ namespace AlgorithmVisualizer.View
         public List<Brush> AvailableColors { get; } = new() { Brushes.SkyBlue, Brushes.Orange, Brushes.MediumPurple, Brushes.Coral, Brushes.LightGreen };
         private Brush _selectedColor = Brushes.SkyBlue;
         public Brush SelectedColor { get => _selectedColor; set { _selectedColor = value; ResetItemsColor(); OnPropChanged(); } }
+        
+        private int _connectedWorkersCount = 0;
+        public int ConnectedWorkersCount { get => _connectedWorkersCount; set { _connectedWorkersCount = value; OnPropChanged(); } }
 
-        public List<string> Algorithms { get; } = new() { "Bubble Sort", "Parallel Merge Sort" };
+        public List<string> Algorithms { get; } = new() { "Bubble Sort", "Parallel Merge Sort", "Distributed Merge Sort" };
         public string SelectedAlgorithm { get; set; } = "Parallel Merge Sort";
+
+        private bool _isMaster = true;
+        public bool IsMaster { get => _isMaster; set { _isMaster = value; OnPropChanged(); OnPropChanged(nameof(IsWorker)); } }
+        public bool IsWorker => !_isMaster;
+
+        private string _workerStatus = "Wybierz rolę...";
+        public string WorkerStatus { get => _workerStatus; set { _workerStatus = value; OnPropChanged(); } }
 
         public event PropertyChangedEventHandler PropertyChanged;
         void OnPropChanged([CallerMemberName] string p = "") => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));
+
+        public MainViewModel()
+        {
+            _distributedSortService = new DistributedSortService();
+            _distributedSortService.WorkersChanged += () => ConnectedWorkersCount = _distributedSortService.ConnectedWorkers;
+        }
+
+        public void SetMasterRole()
+        {
+            IsMaster = true;
+            _distributedSortService.StartListening();
+            GenerateItems();
+        }
+
+        public void SetWorkerRole(string ip)
+        {
+            IsMaster = false;
+            Items.Clear();
+            _ = StartWorkerLoop(ip);
+        }
+
+        private async Task StartWorkerLoop(string ip)
+        {
+            WorkerStatus = $"Łączenie z {ip}:8888...";
+            int port = 8888;
+            while (true)
+            {
+                try
+                {
+                    using var client = new TcpClient();
+                    await client.ConnectAsync(ip, port);
+                    WorkerStatus = "Połączono! Oczekuję na dane...";
+
+                    using var stream = client.GetStream();
+                    while (client.Connected)
+                    {
+                        byte[] lengthBuffer = new byte[4];
+                        int totalRead = 0;
+                        while (totalRead < lengthBuffer.Length)
+                        {
+                            int r = await stream.ReadAsync(lengthBuffer, totalRead, lengthBuffer.Length - totalRead);
+                            if (r == 0) break; totalRead += r;
+                        }
+                        if (totalRead < lengthBuffer.Length) break;
+
+                        int msgLen = BitConverter.ToInt32(lengthBuffer, 0);
+                        byte[] msgBuffer = new byte[msgLen];
+                        totalRead = 0;
+                        while (totalRead < msgBuffer.Length)
+                        {
+                            int r = await stream.ReadAsync(msgBuffer, totalRead, msgBuffer.Length - totalRead);
+                            if (r == 0) break; totalRead += r;
+                        }
+                        if (totalRead < msgBuffer.Length) break;
+
+                        string json = Encoding.UTF8.GetString(msgBuffer);
+                        var data = JsonSerializer.Deserialize<List<double>>(json);
+
+                        WorkerStatus = $"Sortowanie {data.Count} elementów...";
+
+                        // Pokaż dane do posortowania
+                        Application.Current.Dispatcher.Invoke(() => {
+                            Items.Clear();
+                            foreach (var d in data) Items.Add(new VisualElement { Value = d, Color = SelectedColor });
+                        });
+
+                        _cts = new CancellationTokenSource();
+                        var token = _cts.Token;
+                        IsSorting = true;
+                        IsPaused = false;
+                        _pauseEvent.Set();
+                        _sw.Restart();
+
+                        _ = Task.Run(async () => {
+                            while (!token.IsCancellationRequested && IsSorting)
+                            {
+                                SortTime = _sw.Elapsed.ToString(@"ss\:fff") + " ms";
+                                await Task.Delay(50);
+                            }
+                        }, token);
+
+                        // Równoległe wysyłanie postępów do Mistrza
+                        SemaphoreSlim writeLock = new SemaphoreSlim(1, 1);
+                        var progressTask = Task.Run(async () => {
+                            while (!token.IsCancellationRequested && IsSorting)
+                            {
+                                await Task.Delay(50);
+                                if (!IsSorting) break;
+
+                                List<double> currentData = null;
+                                Application.Current.Dispatcher.Invoke(() => {
+                                    currentData = Items.Select(i => i.Value).ToList();
+                                });
+
+                                var msg = new { IsFinal = false, Data = currentData };
+                                string progJson = JsonSerializer.Serialize(msg);
+                                byte[] progBytes = Encoding.UTF8.GetBytes(progJson);
+                                byte[] progLen = BitConverter.GetBytes(progBytes.Length);
+
+                                await writeLock.WaitAsync();
+                                try {
+                                    await stream.WriteAsync(progLen, 0, 4);
+                                    await stream.WriteAsync(progBytes, 0, progBytes.Length);
+                                } catch {
+                                    // Błędy rozłączenia obsłuży główna pętla
+                                } finally {
+                                    writeLock.Release();
+                                }
+                            }
+                        });
+
+                        // Wizualne sortowanie po stronie pracownika!
+                        if (SelectedAlgorithm == "Bubble Sort") await BubbleSort(token);
+                        else await Task.Run(async () => await ParallelMergeSort(0, Items.Count - 1, token), token);
+
+                        IsSorting = false;
+                        await progressTask; // Czekamy aż reporter skończy wysyłanie postępów
+                        ResetItemsColor();
+                        WorkerStatus = "Wysyłanie wyników...";
+
+                        var sortedData = Items.Select(i => i.Value).ToList();
+                        var finalMsg = new { IsFinal = true, Data = sortedData };
+                        string respJson = JsonSerializer.Serialize(finalMsg);
+                        byte[] respBytes = Encoding.UTF8.GetBytes(respJson);
+                        byte[] respLen = BitConverter.GetBytes(respBytes.Length);
+
+                        await writeLock.WaitAsync();
+                        try {
+                            await stream.WriteAsync(respLen, 0, 4);
+                            await stream.WriteAsync(respBytes, 0, respBytes.Length);
+                        } finally { writeLock.Release(); }
+                        WorkerStatus = "Oczekuję na kolejne dane...";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WorkerStatus = $"Błąd: {ex.Message}. Próba ponownego połączenia...";
+                    await Task.Delay(5000);
+                }
+            }
+        }
 
         private async Task CheckPause()
         {
@@ -64,7 +223,7 @@ namespace AlgorithmVisualizer.View
         {
             if (!IsSoundEnabled || !IsSorting) return;
             double frequency = 300 + (value * 2);
-            int toneDuration = Math.Clamp(Delay / 2, 10, 50);
+            int toneDuration = Math.Max(10, Math.Min(50, Delay / 2));
             Task.Run(() => Helpers.SoundHelper.PlaySineTone(frequency, toneDuration, 0.1));
         }
 
@@ -75,9 +234,9 @@ namespace AlgorithmVisualizer.View
             {
                 if (token.IsCancellationRequested) return;
                 _ = Task.Run(() => Helpers.SoundHelper.PlaySineTone(freq, 200, 0.2));
-                App.Current.Dispatcher.Invoke(() => { foreach (var item in Items) item.Color = Brushes.White; });
+                Application.Current.Dispatcher.Invoke(() => { foreach (var item in Items) item.Color = Brushes.White; });
                 await Task.Delay(70);
-                App.Current.Dispatcher.Invoke(() => { foreach (var item in Items) item.Color = SelectedColor; });
+                Application.Current.Dispatcher.Invoke(() => { foreach (var item in Items) item.Color = SelectedColor; });
                 await Task.Delay(100);
             }
         }
@@ -99,6 +258,7 @@ namespace AlgorithmVisualizer.View
             _pauseEvent.Set();
             IsPaused = false;
             IsSorting = false;
+            ResetItemsColor();
             _sw.Reset();
         }
 
@@ -125,7 +285,15 @@ namespace AlgorithmVisualizer.View
                 }, token);
 
                 if (SelectedAlgorithm == "Bubble Sort") await BubbleSort(token);
-                else await Task.Run(async () => await ParallelMergeSort(0, Items.Count - 1, token), token);
+                else if (SelectedAlgorithm == "Parallel Merge Sort")
+                {
+                    await Task.Run(async () => await ParallelMergeSort(0, Items.Count - 1, token), token);
+                }
+                else if (SelectedAlgorithm == "Distributed Merge Sort")
+                {
+                    var data = Items.Select(i => i.Value).ToList();
+                    await DistributedSort(data, token);
+                }
 
                 if (!token.IsCancellationRequested)
                 {
@@ -134,8 +302,13 @@ namespace AlgorithmVisualizer.View
                     await PlaySuccessMelody(token);
                 }
             }
-            catch (OperationCanceledException) { }
-            finally { IsSorting = false; ResetItemsColor(); }
+            catch (OperationCanceledException) { /* Ignored */ }
+            catch (Exception ex)
+            {
+                // Można tu wyświetlić MessageBox z błędem
+                System.Windows.MessageBox.Show($"Wystąpił błąd: {ex.Message}", "Błąd sortowania", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            }
+            finally { StopSort(); }
         }
 
         private async Task BubbleSort(CancellationToken token)
@@ -187,22 +360,79 @@ namespace AlgorithmVisualizer.View
             {
                 if (t.IsCancellationRequested) return;
                 int idx = l + k;
-                App.Current.Dispatcher.Invoke(() => {
+                Application.Current.Dispatcher.Invoke(() => {
                     Items[idx].Value = temp[k];
                     Items[idx].Color = Brushes.WhiteSmoke;
                 });
                 PlayTone(temp[k]);
                 await Task.Delay(Delay, t);
                 await CheckPause();
-                App.Current.Dispatcher.Invoke(() => Items[idx].Color = SelectedColor);
+                Application.Current.Dispatcher.Invoke(() => Items[idx].Color = SelectedColor);
             }
         }
 
-        private void UpdateColor(int i, int j, Brush c) => App.Current.Dispatcher.Invoke(() => {
+        private async Task DistributedSort(List<double> data, CancellationToken token)
+        {
+            var sortedChunks = await _distributedSortService.DistributeAndSortAsync(data, (offset, currentData) => 
+            {
+                Application.Current.Dispatcher.InvokeAsync(() => 
+                {
+                    for (int i = 0; i < currentData.Count; i++)
+                    {
+                        int targetIndex = offset + i;
+                        if (targetIndex < Items.Count)
+                        {
+                            Items[targetIndex].Value = currentData[i];
+                        }
+                    }
+                });
+            }, token);
+
+            // Przygotuj dane do scalenia wizualnego
+            var finalMergedList = new List<double>();
+            int currentPos = 0;
+            foreach (var chunk in sortedChunks)
+            {
+                for (int i = 0; i < chunk.Count; i++)
+                {
+                    int targetIndex = currentPos + i;
+                    if (targetIndex < Items.Count)
+                    {
+                        Application.Current.Dispatcher.Invoke(() => Items[targetIndex].Value = chunk[i]);
+                    }
+                }
+                currentPos += chunk.Count;
+            }
+
+            // Wizualizuj scalanie k-kierunkowe (jako serię scaleń 2-kierunkowych)
+            if (sortedChunks.Count > 1)
+            {
+                int totalMergedSize = sortedChunks[0].Count;
+                for (int i = 1; i < sortedChunks.Count; i++)
+                {
+                    if (token.IsCancellationRequested) break;
+
+                    int leftStart = 0;
+                    int mid = totalMergedSize - 1;
+                    int rightEnd = mid + sortedChunks[i].Count;
+
+                    await Merge(leftStart, mid, rightEnd, token);
+
+                    totalMergedSize += sortedChunks[i].Count;
+                }
+            }
+        }
+
+        private void UpdateColor(int i, int j, Brush c) => Application.Current.Dispatcher.Invoke(() => {
             if (i >= 0 && i < Items.Count) Items[i].Color = c;
             if (j >= 0 && j < Items.Count) Items[j].Color = c;
         });
 
         private void ResetItemsColor() { foreach (var item in Items) item.Color = SelectedColor; }
+
+        public void Dispose()
+        {
+            _distributedSortService.Dispose();
+        }
     }
 }
