@@ -6,7 +6,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
-
+using AlgorithmVisualizer.Model;
 // Prosta aplikacja-robotnik, która łączy się z Mistrzem,
 // odbiera dane, sortuje je i odsyła.
 public class Worker
@@ -87,9 +87,4 @@ public class Worker
             }
         }
     }
-}
-public class SortMessage 
-{
-    public bool IsFinal { get; set; }
-    public List<double> Data { get; set; }
 }

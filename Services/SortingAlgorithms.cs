@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -18,6 +19,8 @@ namespace AlgorithmVisualizer.Services
         private readonly Action<double> _playTone;
         private readonly Func<Task> _checkPause;
 
+        public int ItemsCount => _items.Count;
+
         public SortingAlgorithms(
             ObservableCollection<VisualElement> items,
             int delay,
@@ -32,6 +35,54 @@ namespace AlgorithmVisualizer.Services
             _updateColor = updateColor;
             _playTone = playTone;
             _checkPause = checkPause;
+        }
+
+        public List<double> GetCurrentData()
+        {
+            return _items.Select(i => i.Value).ToList();
+        }
+
+        public void UpdateValuesFromNetwork(int offset, List<double> currentData)
+        {
+            Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                for (int i = 0; i < currentData.Count; i++)
+                {
+                    int targetIndex = offset + i;
+                    if (targetIndex < _items.Count) _items[targetIndex].Value = currentData[i];
+                }
+            });
+        }
+
+        public async Task MergeSortedChunks(List<List<double>> sortedChunks, CancellationToken token)
+        {
+            int currentPos = 0;
+            foreach (var chunk in sortedChunks)
+            {
+                for (int i = 0; i < chunk.Count; i++)
+                {
+                    int targetIndex = currentPos + i;
+                    if (targetIndex < _items.Count)
+                    {
+                        Application.Current.Dispatcher.Invoke(() => _items[targetIndex].Value = chunk[i]);
+                    }
+                }
+                currentPos += chunk.Count;
+            }
+
+            if (sortedChunks.Count > 1)
+            {
+                int totalMergedSize = sortedChunks[0].Count;
+                for (int i = 1; i < sortedChunks.Count; i++)
+                {
+                    if (token.IsCancellationRequested) break;
+                    int leftStart = 0;
+                    int mid = totalMergedSize - 1;
+                    int rightEnd = mid + sortedChunks[i].Count;
+                    await Merge(leftStart, mid, rightEnd, token);
+                    totalMergedSize += sortedChunks[i].Count;
+                }
+            }
         }
 
         public async Task BubbleSort(CancellationToken token)
@@ -91,49 +142,6 @@ namespace AlgorithmVisualizer.Services
                 await Task.Delay(_delay, t);
                 await _checkPause();
                 Application.Current.Dispatcher.Invoke(() => _items[idx].Color = _selectedColor);
-            }
-        }
-
-        public async Task DistributedSort(List<double> data, DistributedSortService networkService, CancellationToken token)
-        {
-            var sortedChunks = await networkService.DistributeAndSortAsync(data, (offset, currentData) =>
-            {
-                Application.Current.Dispatcher.InvokeAsync(() =>
-                {
-                    for (int i = 0; i < currentData.Count; i++)
-                    {
-                        int targetIndex = offset + i;
-                        if (targetIndex < _items.Count) _items[targetIndex].Value = currentData[i];
-                    }
-                });
-            }, token);
-
-            int currentPos = 0;
-            foreach (var chunk in sortedChunks)
-            {
-                for (int i = 0; i < chunk.Count; i++)
-                {
-                    int targetIndex = currentPos + i;
-                    if (targetIndex < _items.Count)
-                    {
-                        Application.Current.Dispatcher.Invoke(() => _items[targetIndex].Value = chunk[i]);
-                    }
-                }
-                currentPos += chunk.Count;
-            }
-
-            if (sortedChunks.Count > 1)
-            {
-                int totalMergedSize = sortedChunks[0].Count;
-                for (int i = 1; i < sortedChunks.Count; i++)
-                {
-                    if (token.IsCancellationRequested) break;
-                    int leftStart = 0;
-                    int mid = totalMergedSize - 1;
-                    int rightEnd = mid + sortedChunks[i].Count;
-                    await Merge(leftStart, mid, rightEnd, token);
-                    totalMergedSize += sortedChunks[i].Count;
-                }
             }
         }
     }

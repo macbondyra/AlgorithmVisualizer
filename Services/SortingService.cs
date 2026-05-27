@@ -42,22 +42,22 @@ namespace AlgorithmVisualizer.Services
             );
         }
 
-        public async Task BubbleSort(CancellationToken token)
+        public ISortingStrategy GetAlgorithm(string name, DistributedSortService networkService)
         {
-            var alg = CreateAlgorithmsContext();
-            await alg.BubbleSort(token);
-        }
+            var context = CreateAlgorithmsContext();
+            ISortingStrategy strategy = name switch
+            {
+                "Bubble Sort" => new BubbleSortStrategy(context),
+                "Parallel Merge Sort" => new ParallelMergeSortStrategy(context),
+                _ => throw new NotSupportedException($"Algorytm {name} nie jest obsługiwany.")
+            };
 
-        public async Task ParallelMergeSort(int l, int r, CancellationToken t)
-        {
-            var alg = CreateAlgorithmsContext();
-            await alg.ParallelMergeSort(l, r, t);
-        }
+            if (_vm.IsMaster && networkService != null && networkService.ConnectedWorkers > 0)
+            {
+                return new DistributedSortDecorator(strategy, networkService, context);
+            }
 
-        public async Task DistributedSort(List<double> data, DistributedSortService distributedSortService, CancellationToken token)
-        {
-            var alg = CreateAlgorithmsContext();
-            await alg.DistributedSort(data, distributedSortService, token);
+            return strategy;
         }
     }
 }

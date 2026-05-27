@@ -31,6 +31,8 @@ namespace AlgorithmVisualizer.Services
         {
             _vm.WorkerStatus = $"Łączenie z {ip}:8888...";
             int port = 8888;
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
             while (true)
             {
                 try
@@ -62,13 +64,13 @@ namespace AlgorithmVisualizer.Services
                         if (totalRead < msgBuffer.Length) break;
 
                         string json = Encoding.UTF8.GetString(msgBuffer);
-                        var data = JsonSerializer.Deserialize<List<double>>(json);
+                        var incomingMsg = JsonSerializer.Deserialize<SortMessage>(json, options);
 
-                        _vm.WorkerStatus = $"Sortowanie {data.Count} elementów...";
+                        _vm.WorkerStatus = $"Sortowanie {incomingMsg.Data.Count} elementów ({incomingMsg.AlgorithmName})...";
 
                         Application.Current.Dispatcher.Invoke(() => {
                             _vm.Items.Clear();
-                            foreach (var d in data) _vm.Items.Add(new VisualElement { Value = d, Color = _vm.SelectedColor });
+                            foreach (var d in incomingMsg.Data) _vm.Items.Add(new VisualElement { Value = d, Color = _vm.SelectedColor });
                         });
 
                         var cts = new CancellationTokenSource();
@@ -99,7 +101,7 @@ namespace AlgorithmVisualizer.Services
                                     currentData = _vm.Items.Select(i => i.Value).ToList();
                                 });
 
-                                var msg = new { IsFinal = false, Data = currentData };
+                                var msg = new SortMessage { IsFinal = false, AlgorithmName = incomingMsg.AlgorithmName, Data = currentData };
                                 string progJson = JsonSerializer.Serialize(msg);
                                 byte[] progBytes = Encoding.UTF8.GetBytes(progJson);
                                 byte[] progLen = BitConverter.GetBytes(progBytes.Length);
@@ -110,18 +112,14 @@ namespace AlgorithmVisualizer.Services
                                     await stream.WriteAsync(progLen, 0, 4);
                                     await stream.WriteAsync(progBytes, 0, progBytes.Length);
                                 }
-                                catch
-                                {
-                                }
-                                finally
-                                {
-                                    writeLock.Release();
-                                }
+                                catch { }
+                                finally { writeLock.Release(); }
                             }
                         });
 
-                        if (_vm.SelectedAlgorithm == "Bubble Sort") await _sortingService.BubbleSort(token);
-                        else await Task.Run(async () => await _sortingService.ParallelMergeSort(0, _vm.Items.Count - 1, token), token);
+                        // Dynamiczne pobranie strategii lokalnej dla workera po nazwie tekstowej
+                        var algorithm = _sortingService.GetAlgorithm(incomingMsg.AlgorithmName, null);
+                        await algorithm.SortAsync(token);
 
                         _vm.IsSorting = false;
                         await progressTask;
@@ -129,7 +127,7 @@ namespace AlgorithmVisualizer.Services
                         _vm.WorkerStatus = "Wysyłanie wyników...";
 
                         var sortedData = _vm.Items.Select(i => i.Value).ToList();
-                        var finalMsg = new { IsFinal = true, Data = sortedData };
+                        var finalMsg = new SortMessage { IsFinal = true, AlgorithmName = incomingMsg.AlgorithmName, Data = sortedData };
                         string respJson = JsonSerializer.Serialize(finalMsg);
                         byte[] respBytes = Encoding.UTF8.GetBytes(respJson);
                         byte[] respLen = BitConverter.GetBytes(respBytes.Length);

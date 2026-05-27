@@ -8,17 +8,12 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using AlgorithmVisualizer.Model;
 
 namespace AlgorithmVisualizer.Services
 {
     public class DistributedSortService : IDisposable
     {
-        public class SortMessage
-        {
-            public bool IsFinal { get; set; }
-            public List<double> Data { get; set; }
-        }
-
         private TcpListener _listener;
         private readonly List<TcpClient> _workers = new();
         private readonly CancellationTokenSource _cts = new();
@@ -27,8 +22,8 @@ namespace AlgorithmVisualizer.Services
 
         public DistributedSortService()
         {
-           Thread.CurrentThread.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
-           _listener = new TcpListener(IPAddress.Any, 8888);
+            Thread.CurrentThread.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+            _listener = new TcpListener(IPAddress.Any, 8888);
         }
 
         public void StartListening()
@@ -40,7 +35,6 @@ namespace AlgorithmVisualizer.Services
             }
             catch (Exception ex)
             {
-                // Log or handle exception (e.g., port already in use)
                 Console.WriteLine($"Failed to start listener: {ex.Message}");
             }
         }
@@ -51,7 +45,6 @@ namespace AlgorithmVisualizer.Services
             {
                 try
                 {
-                    // Usunięto token dla kompatybilności z .NET < 6
                     var worker = await _listener.AcceptTcpClientAsync();
                     lock (_workers)
                     {
@@ -61,22 +54,20 @@ namespace AlgorithmVisualizer.Services
                 }
                 catch (OperationCanceledException)
                 {
-                    // Listener was stopped, exit loop
                     break;
                 }
                 catch (Exception ex)
                 {
-                     Console.WriteLine($"Error accepting worker: {ex.Message}");
+                    Console.WriteLine($"Error accepting worker: {ex.Message}");
                 }
             }
         }
 
-        public async Task<List<List<double>>> DistributeAndSortAsync(List<double> data, Action<int, List<double>> onProgress, CancellationToken token)
+        public async Task<List<List<double>>> DistributeAndSortAsync(List<double> data, string algorithmName, Action<int, List<double>> onProgress, CancellationToken token)
         {
             List<TcpClient> currentWorkers;
             lock (_workers)
             {
-                // Usuń rozłączonych workerów
                 _workers.RemoveAll(w => !w.Connected);
                 currentWorkers = new List<TcpClient>(_workers);
             }
@@ -94,7 +85,7 @@ namespace AlgorithmVisualizer.Services
             for (int i = 0; i < currentWorkers.Count; i++)
             {
                 int offset = currentOffset;
-                tasks.Add(ProcessChunk(currentWorkers[i], chunks[i], progressData => onProgress?.Invoke(offset, progressData), token));
+                tasks.Add(ProcessChunk(currentWorkers[i], chunks[i], algorithmName, progressData => onProgress?.Invoke(offset, progressData), token));
                 currentOffset += chunks[i].Count;
             }
 
@@ -102,24 +93,20 @@ namespace AlgorithmVisualizer.Services
             return sortedChunks.ToList();
         }
 
-        private async Task<List<double>> ProcessChunk(TcpClient worker, List<double> chunk, Action<List<double>> onProgress, CancellationToken token)
+        private async Task<List<double>> ProcessChunk(TcpClient worker, List<double> chunk, string algorithmName, Action<List<double>> onProgress, CancellationToken token)
         {
-            var options = new JsonSerializerOptions 
-                { 
-                    PropertyNameCaseInsensitive = true 
-                };
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             using var registration = token.Register(() => worker.Close());
 
             var stream = worker.GetStream();
-            
-            // Wyślij dane
-            string json = JsonSerializer.Serialize(chunk);
+
+            var initialMsg = new SortMessage { IsFinal = false, AlgorithmName = algorithmName, Data = chunk };
+            string json = JsonSerializer.Serialize(initialMsg);
             byte[] jsonBytes = Encoding.UTF8.GetBytes(json);
             byte[] lengthPrefix = BitConverter.GetBytes(jsonBytes.Length);
             await stream.WriteAsync(lengthPrefix, 0, 4, token);
             await stream.WriteAsync(jsonBytes, 0, jsonBytes.Length, token);
 
-            // Pętla nasłuchująca odpowiedzi (postępy + wynik końcowy)
             while (true)
             {
                 byte[] lengthBuffer = new byte[4];
@@ -141,18 +128,18 @@ namespace AlgorithmVisualizer.Services
                     if (bytesRead == 0) throw new EndOfStreamException("Utracono połączenie z workerem podczas odczytu danych.");
                     totalRead += bytesRead;
                 }
-                
+
                 string responseJson = Encoding.UTF8.GetString(messageBuffer);
                 try
                 {
-                var message = JsonSerializer.Deserialize<SortMessage>(responseJson, options);
-                
+                    var message = JsonSerializer.Deserialize<SortMessage>(responseJson, options);
+
                     if (message.IsFinal)
                         return message.Data;
                     else
-                    onProgress?.Invoke(message.Data);
+                        onProgress?.Invoke(message.Data);
                 }
-                catch (System.Text.Json.JsonException)
+                catch (JsonException)
                 {
                     Console.WriteLine($"PAYLOAD_DUMP: {responseJson}");
                     throw;
@@ -181,10 +168,7 @@ namespace AlgorithmVisualizer.Services
             _listener.Stop();
             lock (_workers)
             {
-                foreach (var worker in _workers)
-                {
-                    worker.Close();
-                }
+                foreach (var worker in _workers) worker.Close();
                 _workers.Clear();
             }
             WorkersChanged?.Invoke();

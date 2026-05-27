@@ -50,7 +50,8 @@ namespace AlgorithmVisualizer.View
         private int _connectedWorkersCount = 0;
         public int ConnectedWorkersCount { get => _connectedWorkersCount; set { _connectedWorkersCount = value; OnPropChanged(); } }
 
-        public List<string> Algorithms { get; } = new() { "Bubble Sort", "Parallel Merge Sort", "Distributed Merge Sort" };
+        // CZYSZCZENIE: Usunięto sztuczny "Distributed Merge Sort" z listy UI
+        public List<string> Algorithms { get; } = new() { "Bubble Sort", "Parallel Merge Sort" };
         public string SelectedAlgorithm { get; set; } = "Parallel Merge Sort";
 
         private bool _isMaster = true;
@@ -136,16 +137,9 @@ namespace AlgorithmVisualizer.View
                     }
                 }, token);
 
-                if (SelectedAlgorithm == "Bubble Sort") await _sortingService.BubbleSort(token);
-                else if (SelectedAlgorithm == "Parallel Merge Sort")
-                {
-                    await Task.Run(async () => await _sortingService.ParallelMergeSort(0, Items.Count - 1, token), token);
-                }
-                else if (SelectedAlgorithm == "Distributed Merge Sort")
-                {
-                    var data = Items.Select(i => i.Value).ToList();
-                    await _sortingService.DistributedSort(data, _distributedSortService, token);
-                }
+                // Wybór strategii (Automatycznie opakowuje w dekorator sieciowy, gdy są workerzy)
+                ISortingStrategy algorithm = _sortingService.GetAlgorithm(SelectedAlgorithm, _distributedSortService);
+                await Task.Run(async () => await algorithm.SortAsync(token), token);
 
                 if (!token.IsCancellationRequested)
                 {
