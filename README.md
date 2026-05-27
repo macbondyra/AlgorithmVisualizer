@@ -50,15 +50,15 @@ Projekt jest podzielony na logiczne moduły, co ułatwia jego rozwój i testowan
 
 ```text
 AlgorithmVisualizer/
-├── AlgorithmVisualizer/          # Główna aplikacja (Mistrz / UI)
-│   ├── Model/                    # Reprezentacja danych (np. VisualElement.cs)
-│   ├── View/                     # Definicje interfejsu (XAML)
-│   ├── ViewModel/                # Logika powiązań danych (MVVM)
-│   ├── Services/                 # Serwisy sieciowe (np. DistributedSortService.cs)
+├── AlgorithmVisualizer/          # Główna aplikacja (Mistrz / Serwer / UI)
+│   ├── Model/                    # Reprezentacja danych i stan wizualizacji (np. VisualElement.cs)
+│   ├── View/                     # Definicje interfejsu użytkownika w XAML (np. MainWindow.xaml)
+│   ├── ViewModel/                # Logika powiązań danych MVVM (np. MainViewModel.cs)
+│   ├── Services/                 # Serwisy biznesowe i algorytmiczne (np. DistributedSortService.cs)
 │   └── helpers/                  # Moduły pomocnicze (np. SoundHelper.cs)
-├── AlgorithmVisualizer.Worker/   # Jednostka obliczeniowa (Robotnik)
-│   └── Program.cs                # Logika klienta sieciowego
-└── AlgorithmVisualizer.sln       # Plik rozwiązania Visual Studio text
+├── AlgorithmVisualizer.Worker/   # Autonomiczna aplikacja procesowa (Robotnik / Klient)
+│   └── Program.cs                # Pętla sieciowa i logika wykonawcza klienta
+└── AlgorithmVisualizer.sln       # Plik rozwiązania zbiorczego Visual Studio
 ```
 
 ## 🚀 Jak uruchomić projekt
