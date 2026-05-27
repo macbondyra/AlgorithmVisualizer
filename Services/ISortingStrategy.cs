@@ -39,4 +39,13 @@ namespace AlgorithmVisualizer.Services
 
         public Task SortAsync(CancellationToken token) => _alg.ParallelOddEvenSort(token);
     }
+    public class ParallelQuickSortStrategy : ISortingStrategy
+    {
+        private readonly SortingAlgorithms _alg;
+        public string Name => "Parallel Quick Sort";
+
+        public ParallelQuickSortStrategy(SortingAlgorithms alg) => _alg = alg;
+
+        public Task SortAsync(CancellationToken token) => _alg.ParallelQuickSort(0, _alg.ItemsCount - 1, token);
+    }
 }

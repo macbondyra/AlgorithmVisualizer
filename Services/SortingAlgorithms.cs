@@ -224,6 +224,70 @@ namespace AlgorithmVisualizer.Services
                 Application.Current.Dispatcher.Invoke(() => ResetColors());
             }
         }
-      
+        public async Task ParallelQuickSort(int low, int high, CancellationToken t)
+        {
+            if (t.IsCancellationRequested || low >= high) return;
+
+            // Partycjonowanie tablicy (wybór pivota i przestawienie elementów)
+            int pivotIdx = await Partition(low, high, t);
+
+            // Warunek progowy: jeśli podtablice są duże, sortuj je równolegle na osobnych rdzeniach
+            if (high - low > 15)
+            {
+                await Task.WhenAll(
+                    ParallelQuickSort(low, pivotIdx - 1, t),
+                    ParallelQuickSort(pivotIdx + 1, high, t)
+                );
+            }
+            else
+            {
+                // Dla małych fragmentów sortuj sekwencyjnie krok po kroku
+                await ParallelQuickSort(low, pivotIdx - 1, t);
+                await ParallelQuickSort(pivotIdx + 1, high, t);
+            }
+        }
+
+        private async Task<int> Partition(int low, int high, CancellationToken t)
+        {
+            double pivot = _items[high].Value;
+            int i = low - 1;
+
+            // Wizualizacja: zaznacz pivot kolorem (np. WhiteSmoke)
+            Application.Current.Dispatcher.Invoke(() => _items[high].Color = Brushes.WhiteSmoke);
+
+            for (int j = low; j < high; j++)
+            {
+                if (t.IsCancellationRequested) return low;
+
+                _updateColor(j, Math.Max(0, i), Brushes.White);
+                await Task.Delay(_delay, t);
+                await _checkPause();
+
+                if (_items[j].Value < pivot)
+                {
+                    i++;
+                    // Zamiana wartości w wątku UI
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        (_items[i].Value, _items[j].Value) = (_items[j].Value, _items[i].Value);
+                    });
+                    _playTone(_items[i].Value);
+                }
+
+                _updateColor(j, Math.Max(0, i), _selectedColor);
+            }
+
+            // Umieszczenie pivota na właściwym miejscu
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                (_items[i + 1].Value, _items[high].Value) = (_items[high].Value, _items[i + 1].Value);
+                _items[high].Color = _selectedColor;
+            });
+
+            _playTone(_items[i + 1].Value);
+            await Task.Delay(_delay, t);
+
+            return i + 1;
+        }
     }
 }
