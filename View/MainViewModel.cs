@@ -51,7 +51,7 @@ namespace AlgorithmVisualizer.View
         public int ConnectedWorkersCount { get => _connectedWorkersCount; set { _connectedWorkersCount = value; OnPropChanged(); } }
 
         // CZYSZCZENIE: Usunięto sztuczny "Distributed Merge Sort" z listy UI
-        public List<string> Algorithms { get; } = new() { "Bubble Sort", "Parallel Merge Sort" };
+        public List<string> Algorithms { get; } = new() { "Bubble Sort", "Parallel Merge Sort", "Parallel Odd-Even Sort" };
         public string SelectedAlgorithm { get; set; } = "Parallel Merge Sort";
 
         private bool _isMaster = true;

@@ -30,4 +30,13 @@ namespace AlgorithmVisualizer.Services
 
         public Task SortAsync(CancellationToken token) => _alg.ParallelMergeSort(0, _alg.ItemsCount - 1, token);
     }
+    public class ParallelOddEvenSortStrategy : ISortingStrategy
+    {
+        private readonly SortingAlgorithms _alg;
+        public string Name => "Parallel Odd-Even Sort";
+
+        public ParallelOddEvenSortStrategy(SortingAlgorithms alg) => _alg = alg;
+
+        public Task SortAsync(CancellationToken token) => _alg.ParallelOddEvenSort(token);
+    }
 }

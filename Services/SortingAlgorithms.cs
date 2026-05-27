@@ -144,5 +144,86 @@ namespace AlgorithmVisualizer.Services
                 Application.Current.Dispatcher.Invoke(() => _items[idx].Color = _selectedColor);
             }
         }
+        private void ResetColors()
+        {
+            foreach (var item in _items) item.Color = _selectedColor;
+        }   
+        public async Task ParallelOddEvenSort(CancellationToken token)
+        {
+            int n = _items.Count;
+            bool isSorted = false;
+
+            while (!isSorted)
+            {
+                if (token.IsCancellationRequested) return;
+                isSorted = true;
+
+                // 1. FAZA PARZYSTA (Równoległe porównywanie par: 0-1, 2-3, 4-5...)
+                List<Task<bool>> evenTasks = new();
+                for (int i = 0; i < n - 1; i += 2)
+                {
+                    int idx = i;
+                    evenTasks.Add(Task.Run(async () =>
+                    {
+                        bool swapped = false;
+                        if (_items[idx].Value > _items[idx + 1].Value)
+                        {
+                            // Blokada Dispatchera tylko na czas zamiany struktur WPF
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                (_items[idx].Value, _items[idx + 1].Value) = (_items[idx + 1].Value, _items[idx].Value);
+                                _items[idx].Color = Brushes.White;
+                                _items[idx + 1].Color = Brushes.White;
+                            });
+
+                            _playTone(_items[idx].Value);
+                            swapped = true;
+                        }
+                        return swapped;
+                    }));
+                }
+
+                // Czekaj na zakończenie wszystkich równoległych wątków z fazy parzystej
+                var evenResults = await Task.WhenAll(evenTasks);
+                if (evenResults.Any(r => r == true)) isSorted = false;
+
+                // Opóźnienie animacji po wykonaniu równoległego kroku
+                await Task.Delay(_delay, token);
+                await _checkPause();
+                Application.Current.Dispatcher.Invoke(() => ResetColors());
+
+                // 2. FAZA NIEPARZYSTA (Równoległe porównywanie par: 1-2, 3-4, 5-6...)
+                List<Task<bool>> oddTasks = new();
+                for (int i = 1; i < n - 1; i += 2)
+                {
+                    int idx = i;
+                    oddTasks.Add(Task.Run(async () =>
+                    {
+                        bool swapped = false;
+                        if (_items[idx].Value > _items[idx + 1].Value)
+                        {
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                (_items[idx].Value, _items[idx + 1].Value) = (_items[idx + 1].Value, _items[idx].Value);
+                                _items[idx].Color = Brushes.White;
+                                _items[idx + 1].Color = Brushes.White;
+                            });
+
+                            _playTone(_items[idx].Value);
+                            swapped = true;
+                        }
+                        return swapped;
+                    }));
+                }
+
+                var oddResults = await Task.WhenAll(oddTasks);
+                if (oddResults.Any(r => r == true)) isSorted = false;
+
+                await Task.Delay(_delay, token);
+                await _checkPause();
+                Application.Current.Dispatcher.Invoke(() => ResetColors());
+            }
+        }
+      
     }
 }

@@ -49,6 +49,7 @@ namespace AlgorithmVisualizer.Services
             {
                 "Bubble Sort" => new BubbleSortStrategy(context),
                 "Parallel Merge Sort" => new ParallelMergeSortStrategy(context),
+                "Parallel Odd-Even Sort" => new ParallelOddEvenSortStrategy(context),
                 _ => throw new NotSupportedException($"Algorytm {name} nie jest obsługiwany.")
             };
 
